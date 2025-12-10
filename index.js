@@ -24,18 +24,45 @@ async function run() {
     await client.connect();
     const DB = client.db("e_TutionBD");
     const userCollection = DB.collection("users");
+    const postCollection = DB.collection("tutionPost");
 
     // all user
     app.post("/users", async (req, res) => {
       const user = req.body;
-      console.log("user")
       user.createdAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
-      const email = user.email;
-      const userExists = await userCollection.findOne({ email });
+      const Email = user.Email;
+      const userExists = await userCollection.findOne({ Email });
       if (userExists) {
         return res.send({ message: "user exists" });
       }
       const result = await userCollection.insertOne(user);
+      res.send(result);
+    });
+
+    // Tution Post
+    app.post("/post", async (req, res) => {
+      console.log('post')
+      const post = req.body;
+      post.createdAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+      const result = await postCollection.insertOne(post);
+      res.send(result);
+    });
+      app.get("/post", async (req, res) => {
+      const searchText = req.query.searchText;
+      const query = {};
+
+      if (searchText) {
+        // query.displayName = {$regex: searchText, $options: 'i'}
+
+        query.$or = [
+          { Subject: { $regex: searchText, $options: "i" } },
+          { selectDistrict: { $regex: searchText, $options: "i" } },
+        ];
+      }
+          const cursor = postCollection
+        .find(query)
+        .sort({ createdAt: -1 })
+      const result = await cursor.toArray();
       res.send(result);
     });
 
