@@ -3,7 +3,7 @@ const cors = require("cors");
 const app = express();
 const port = 3000;
 require("dotenv").config();
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const { format } = require("date-fns");
 
 // middleware added
@@ -41,13 +41,14 @@ async function run() {
 
     // Tution Post
     app.post("/post", async (req, res) => {
-      console.log('post')
+      console.log("post");
       const post = req.body;
       post.createdAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
       const result = await postCollection.insertOne(post);
       res.send(result);
     });
-      app.get("/post", async (req, res) => {
+
+    app.get("/post", async (req, res) => {
       const searchText = req.query.searchText;
       const query = {};
 
@@ -59,14 +60,19 @@ async function run() {
           { selectDistrict: { $regex: searchText, $options: "i" } },
         ];
       }
-          const cursor = postCollection
-        .find(query)
-        .sort({ createdAt: -1 })
+      const cursor = postCollection.find(query).sort({ createdAt: -1 });
       const result = await cursor.toArray();
       res.send(result);
     });
 
-    await client.db("admin").command({ ping: 1 });
+    app.get("/post/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await postCollection.findOne(query);
+      res.send(result);
+    });
+
+    await client.db("admin").command({ ping: 1 }); 
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
