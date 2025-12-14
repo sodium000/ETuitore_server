@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const cookieParser = require("cookie-parser");
 const app = express();
 const port = 3000;
 require("dotenv").config();
@@ -9,6 +10,7 @@ const jwt = require("jsonwebtoken");
 
 // middleware added
 app.use(express.json());
+app.use(cookieParser());
 app.use(cors(
   {
     origin: "http://localhost:5173",
@@ -16,8 +18,8 @@ app.use(cors(
   }
 ));
 
-const createToken = (user) => {
-  return jwt.sign(user, process.env.JWT_SECRET);
+const createToken = (email) => {
+  return jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: "7d" });
 };
 
 const verifyJWT = (req, res, next) => {
@@ -49,17 +51,17 @@ async function run() {
     const userCollection = DB.collection("users");
     const postCollection = DB.collection("tutionPost");
 
-    // all user
+    // Register user
     app.post("/users", async (req, res) => {
       const user = req.body;
       user.createdAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
       const Email = user.Email;
-      const token = createToken(Email);
       const userExists = await userCollection.findOne({ Email });
       if (userExists) {
         return res.send({ message: "user exists" });
       }
       const result = await userCollection.insertOne(user);
+      const token = createToken(Email);
       res.cookie("token", token, {
         httpOnly: true,
         secure: false, // true in production
@@ -68,11 +70,35 @@ async function run() {
       res.send(result);
     });
 
+    // Login user
+    app.post("/login", async (req, res) => {
+      const { Email } = req.body;
+      const user = await userCollection.findOne({ Email });
+      if (!user) {
+        return res.status(401).send({ message: "User not found" });
+      }
+      const token = createToken(Email);
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: false, // true in production
+        sameSite: "lax",
+      });
+      res.send({ message: "Login successful", user });
+    });
+
+
+    // Logout user
+    app.post("/logout", (req, res) => {
+      res.clearCookie("token");
+      res.send({ message: "Logout successful" });
+    });
+
     // Tution Post
-    app.post("/post", async (req, res) => {
+    app.post("/post", verifyJWT, async (req, res) => {
       console.log("post");
       const post = req.body;
       post.createdAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+      post.postedBy = req.user.email; 
       const result = await postCollection.insertOne(post);
       res.send(result);
     });
