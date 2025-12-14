@@ -11,26 +11,27 @@ const jwt = require("jsonwebtoken");
 // middleware added
 app.use(express.json());
 app.use(cookieParser());
-app.use(cors(
-  {
+app.use(
+  cors({
     origin: "http://localhost:5173",
     credentials: true,
-  }
-));
+  })
+);
 
-const createToken = (email) => {
-  return jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: "7d" });
+const createToken = (Email) => {
+  return jwt.sign({ Email }, process.env.JWT_SECRET, { expiresIn: "7d" });
 };
 
 const verifyJWT = (req, res, next) => {
   const token = req.cookies.token;
+
   if (!token) {
-    return res.sendStatus(401)
-  };
+    return res.sendStatus(401);
+  }
 
   jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
     if (err) return res.sendStatus(403);
-    req.user = decoded;
+    req.Email = decoded;
     next();
   });
 };
@@ -70,6 +71,25 @@ async function run() {
       res.send(result);
     });
 
+    // Register user
+    app.post("/Googleusers", async (req, res) => {
+      const user = req.body;
+      user.createdAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+      const Email = user.Email;
+      const token = createToken(Email);
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: false, // true in production
+        sameSite: "lax",
+      });
+      const userExists = await userCollection.findOne({ Email });
+      if (userExists) {
+        return res.send({ message: "user exists" });
+      }
+      const result = await userCollection.insertOne(user);
+      res.send(result);
+    });
+
     // Login user
     app.post("/login", async (req, res) => {
       const { Email } = req.body;
@@ -86,7 +106,6 @@ async function run() {
       res.send({ message: "Login successful", user });
     });
 
-
     // Logout user
     app.post("/logout", (req, res) => {
       res.clearCookie("token");
@@ -97,8 +116,9 @@ async function run() {
     app.post("/post", verifyJWT, async (req, res) => {
       console.log("post");
       const post = req.body;
+      console.log(req.Email)
       post.createdAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
-      post.postedBy = req.user.email; 
+      post.postedBy = req.Email.Email;
       const result = await postCollection.insertOne(post);
       res.send(result);
     });
@@ -133,7 +153,8 @@ async function run() {
 }
 run();
 
-app.get("/", (req, res) => {
+app.get("/",verifyJWT, (req, res) => {
+  console.log(req.Email.email)
   res.send("Hello World! etutionBD");
 });
 
