@@ -51,6 +51,7 @@ async function run() {
     const DB = client.db("e_TutionBD");
     const userCollection = DB.collection("users");
     const postCollection = DB.collection("tutionPost");
+    const ApplyCollection = DB.collection("Application");
 
     // Register user
     app.post("/users", async (req, res) => {
@@ -114,13 +115,30 @@ async function run() {
 
     // Tution Post
     app.post("/post", verifyJWT, async (req, res) => {
-      console.log("post");
       const post = req.body;
-      console.log(req.Email)
       post.createdAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
       post.postedBy = req.Email.Email;
       const result = await postCollection.insertOne(post);
       res.send(result);
+    });
+
+    app.post("/applications", verifyJWT, async (req, res) => {
+      const applications = req.body;
+      ApplyBy = req.Email.Email;
+      tutorEmail = req.body.tutorEmail;
+      if (ApplyBy === tutorEmail) {
+        const postId = req.body.postId;
+        const query = {
+          postId,
+          tutorEmail,
+        };
+        const sameapply = await userCollection.findOne(query);
+        if (!sameapply) {
+          const result = await ApplyCollection.insertOne(applications);
+         return  res.send(result);
+        }
+      }
+      return res.send({ message: "Already post" });
     });
 
     app.get("/post", async (req, res) => {
@@ -144,6 +162,20 @@ async function run() {
       res.send(result);
     });
 
+    // roleBase Api
+
+    app.get("/users/:email/role", async (req, res) => {
+      const email = req.params.email;
+      const query = {};
+      if (email) {
+        {
+          query.Email = email;
+        }
+      }
+      const user = await userCollection.findOne(query);
+      res.send({ role: user?.role || "student" });
+    });
+
     await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
@@ -153,8 +185,8 @@ async function run() {
 }
 run();
 
-app.get("/",verifyJWT, (req, res) => {
-  console.log(req.Email.email)
+app.get("/", verifyJWT, (req, res) => {
+  console.log(req.Email.email);
   res.send("Hello World! etutionBD");
 });
 
