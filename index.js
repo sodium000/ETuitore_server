@@ -118,6 +118,7 @@ async function run() {
       const post = req.body;
       post.createdAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
       post.postedBy = req.Email.Email;
+      post.status = "panding";
       const result = await postCollection.insertOne(post);
       res.send(result);
     });
@@ -138,7 +139,7 @@ async function run() {
         }
       }
       const result = await ApplyCollection.insertOne(applications);
-      return  res.send(result);
+      return res.send(result);
     });
 
     app.get("/applications/:email/apply", verifyJWT, async (req, res) => {
@@ -146,33 +147,44 @@ async function run() {
       ApplyBy = req.Email.Email;
       if (ApplyBy === email) {
         const query = {
-          tutorEmail : email
+          tutorEmail: email,
         };
         const result = await ApplyCollection.find(query).toArray();
-      return  res.send(result);
+        return res.send(result);
       }
-      
     });
 
-    app.delete('/applications/:id/deleted', async (req,res)=>{
+    app.get("/applications/:email/student", verifyJWT, async (req, res) => {
+      const email = req.params.email;
+      ApplyBy = req.Email.Email;
+      if (ApplyBy === email) {
+        const query = {
+          email,
+        };
+        const result = await ApplyCollection.find(query).toArray();
+        return res.send(result);
+      }
+    });
+
+    app.delete("/applications/:id/deleted", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await ApplyCollection.deleteOne(query);
       res.send(result);
-    } )
-
-
-
+    });
 
     app.get("/post", async (req, res) => {
       const searchText = req.query.searchText;
-      const query = {};
+      const query = {
+        status: "accepted",
+      };
       if (searchText) {
         query.$or = [
           { Subject: { $regex: searchText, $options: "i" } },
           { selectDistrict: { $regex: searchText, $options: "i" } },
         ];
       }
+
       const cursor = postCollection.find(query).sort({ createdAt: -1 });
       const result = await cursor.toArray();
       res.send(result);
@@ -185,7 +197,43 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/post/:id/apply", async (req, res) => {
+      const id = req.params.id;
+      const query = { postId: id };
+      const result = await ApplyCollection.find(query).toArray();
+      res.send(result);
+    });
 
+    app.get("/post/:email/getpost", async (req, res) => {
+      const email = req.params.email;
+      const query = { postedBy: email };
+      const projectFields = { _id: 1 };
+      const result = await postCollection
+        .find(query)
+        .project(projectFields)
+        .toArray();
+      res.send(result);
+    });
+
+    app.get("/post/:email/all", async (req, res) => {
+      const email = req.params.email;
+      const query = { postedBy: email };
+      const result = await postCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.patch("/post/:id/update", verifyJWT, async (req, res) => {
+      const id = req.params.id;
+      const updateStatus = req.body.status;
+      const query = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          status: updateStatus,
+        },
+      };
+      const result = await ApplyCollection.updateOne(query, updatedDoc);
+      res.send(result);
+    });
 
     // roleBase Api
     app.get("/users/:email/role", async (req, res) => {
@@ -200,6 +248,46 @@ async function run() {
       res.send({ role: user?.role || "student" });
     });
 
+
+    // patch post data
+
+    app.patch("/post/:id/postdata", verifyJWT, async (req, res) => {
+      const id = req.params.id;
+      const updateStatus = req.body;
+      console.log(updateStatus);
+      const query = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {...updateStatus}
+      };
+      const result = await postCollection.updateOne(query, updatedDoc);
+      res.send(result);
+    });
+
+    // deleted
+    app.delete("/post/:id/deleted", verifyJWT, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await postCollection.deleteOne(query);
+      res.send(result);
+    });
+
+
+
+
+    // api for usermenegment
+
+    app.get('/alldata',async (req,res) => {
+      const query = {};
+      const result = await postCollection.find(query).toArray();
+      res.send(result);
+    })
+
+    app.get('/alluser',async (req,res) => {
+      const query = {};
+      const result = await userCollection.find(query).toArray();
+      res.send(result);
+    })
+
     await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
@@ -210,7 +298,6 @@ async function run() {
 run();
 
 app.get("/", verifyJWT, (req, res) => {
-  console.log(req.Email.email);
   res.send("Hello World! etutionBD");
 });
 
