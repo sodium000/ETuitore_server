@@ -132,14 +132,37 @@ async function run() {
           postId,
           tutorEmail,
         };
-        const sameapply = await userCollection.findOne(query);
-        if (!sameapply) {
-          const result = await ApplyCollection.insertOne(applications);
-         return  res.send(result);
+        const sameapply = await ApplyCollection.findOne(query);
+        if (sameapply) {
+          return res.send({ message: "Already apply" });
         }
       }
-      return res.send({ message: "Already post" });
+      const result = await ApplyCollection.insertOne(applications);
+      return  res.send(result);
     });
+
+    app.get("/applications/:email/apply", verifyJWT, async (req, res) => {
+      const email = req.params.email;
+      ApplyBy = req.Email.Email;
+      if (ApplyBy === email) {
+        const query = {
+          tutorEmail : email
+        };
+        const result = await ApplyCollection.find(query).toArray();
+      return  res.send(result);
+      }
+      
+    });
+
+    app.delete('/applications/:id/deleted', async (req,res)=>{
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await ApplyCollection.deleteOne(query);
+      res.send(result);
+    } )
+
+
+
 
     app.get("/post", async (req, res) => {
       const searchText = req.query.searchText;
@@ -162,8 +185,9 @@ async function run() {
       res.send(result);
     });
 
-    // roleBase Api
 
+
+    // roleBase Api
     app.get("/users/:email/role", async (req, res) => {
       const email = req.params.email;
       const query = {};
