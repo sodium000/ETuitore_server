@@ -7,6 +7,7 @@ require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const { format } = require("date-fns");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 
 // middleware added
 app.use(express.json());
@@ -36,6 +37,15 @@ const verifyJWT = (req, res, next) => {
   });
 };
 
+// crypto genaretot
+function generateTrackingId() {
+  const prefix = "PRCL"; // your brand prefix
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, ""); // YYYYMMDD
+  const random = crypto.randomBytes(3).toString("hex").toUpperCase(); // 6-char random hex
+
+  return `${prefix}-${date}-${random}`;
+}
+
 // mogodb connection
 const uri = `mongodb+srv://${process.env.db_username}:${process.env.db_password}@chat-application.qhq6ecs.mongodb.net/?appName=chat-application`;
 const client = new MongoClient(uri, {
@@ -52,6 +62,18 @@ async function run() {
     const userCollection = DB.collection("users");
     const postCollection = DB.collection("tutionPost");
     const ApplyCollection = DB.collection("Application");
+
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.Email.Email;
+      const query = { email };
+      const user = await userCollection.findOne(query);
+
+      if (!user || user.role !== "admin") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+
+      next();
+    };
 
     // Register user
     app.post("/users", async (req, res) => {
@@ -248,7 +270,6 @@ async function run() {
       res.send({ role: user?.role || "student" });
     });
 
-
     // patch post data
 
     app.patch("/post/:id/postdata", verifyJWT, async (req, res) => {
@@ -257,7 +278,7 @@ async function run() {
       console.log(updateStatus);
       const query = { _id: new ObjectId(id) };
       const updatedDoc = {
-        $set: {...updateStatus}
+        $set: { ...updateStatus },
       };
       const result = await postCollection.updateOne(query, updatedDoc);
       res.send(result);
@@ -271,22 +292,142 @@ async function run() {
       res.send(result);
     });
 
-
-
-
     // api for usermenegment
 
-    app.get('/alldata',async (req,res) => {
+    app.get("/alldata", async (req, res) => {
       const query = {};
       const result = await postCollection.find(query).toArray();
       res.send(result);
-    })
+    });
 
-    app.get('/alluser',async (req,res) => {
+    app.get("/alluser", async (req, res) => {
       const query = {};
       const result = await userCollection.find(query).toArray();
       res.send(result);
-    })
+    });
+
+    app.patch("/users/:id/role", verifyJWT, async (req, res) => {
+      const id = req.params.id;
+      const updateStatus = req.body;
+      console.log(updateStatus);
+      const query = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          role: updateStatus.role,
+        },
+      };
+      const result = await userCollection.updateOne(query, updatedDoc);
+      res.send(result);
+    });
+
+    // payment api
+
+    app.post("/payment-checkout-session", async (req, res) => {
+      const paymentInfo = req.body;
+      const amount = parseInt(paymentInfo.cost) * 100;
+      const session = await stripe.checkout.sessions.create({
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              unit_amount: amount,
+              product_data: {
+                name: `Please pay for: ${paymentInfo.parcelName}`,
+              },
+            },
+            quantity: 1,
+          },
+        ],
+        mode: "payment",
+        metadata: {
+          parcelId: paymentInfo.parcelId,
+          parcelName: paymentInfo.parcelName,
+        },
+        customer_email: paymentInfo.senderEmail,
+        success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
+      });
+
+      res.send({ url: session.url });
+    });
+
+    app.patch("/payment-success", async (req, res) => {
+      const sessionId = req.query.session_id;
+
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+      const transactionId = session.payment_intent;
+      const query = { transactionId: transactionId };
+      const PaymentExt = await paymentCollection.findOne(query);
+
+      if (PaymentExt) {
+        return res.send({
+          message: "already exists",
+          transactionId,
+          trackingId: PaymentExt.trackingId,
+        });
+      }
+
+      const trackingId = generateTrackingId();
+
+      if (session.payment_status === "paid") {
+        const id = session.metadata.parcelId;
+        const query = { _id: new ObjectId(id) };
+        const update = {
+          $set: {
+            paymentStatus: "paid",
+            deliveryStatus: "pending-pickup",
+            trackingId: trackingId,
+          },
+        };
+        const result = await parcelsCollection.updateOne(query, update);
+
+        const payment = {
+          amount: session.amount_total / 100,
+          currency: session.currency,
+          customerEmail: session.customer_email,
+          parcelId: session.metadata.parcelId,
+          parcelName: session.metadata.parcelName,
+          transactionId: session.payment_intent,
+          paymentStatus: session.payment_status,
+          paidAt: new Date(),
+          trackingId: trackingId,
+        };
+
+        if (session.payment_status === "paid") {
+          const resultPayment = await paymentCollection.insertOne(payment);
+
+          res.send({
+            success: true,
+            modifyParcel: result,
+            trackingId: trackingId,
+            transactionId: session.payment_intent,
+            paymentInfo: resultPayment,
+          });
+        }
+      }
+
+      res.send({ success: false });
+    });
+
+    // get payment info
+
+    app.get("/payments", verifyJWT, async (req, res) => {
+      const Email = req.query.email;
+      const query = {};
+
+      if (Email) {
+        query.customerEmail = Email;
+        // check email address
+        if (Email !== req.decoded_email) {
+          return res.status(403).send({ message: "forbidden access" });
+        }
+      }
+
+      const cursor = paymentCollection.find(query).sort({ paidAt: -1 });
+      const result = await cursor.toArray();
+      res.send(result);
+    });
 
     await client.db("admin").command({ ping: 1 });
     console.log(
