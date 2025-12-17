@@ -8,6 +8,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const { format } = require("date-fns");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
+const stripe = require("stripe")(process.env.STEIPE_SECRET);
 
 // middleware added
 app.use(express.json());
@@ -62,6 +63,7 @@ async function run() {
     const userCollection = DB.collection("users");
     const postCollection = DB.collection("tutionPost");
     const ApplyCollection = DB.collection("Application");
+    const paymentCollection = DB.collection("paymentCollection");
 
     const verifyAdmin = async (req, res, next) => {
       const email = req.Email.Email;
@@ -88,7 +90,7 @@ async function run() {
       const token = createToken(Email);
       res.cookie("token", token, {
         httpOnly: true,
-        secure: false, // true in production
+        secure: false,
         sameSite: "lax",
       });
       res.send(result);
@@ -325,15 +327,16 @@ async function run() {
 
     app.post("/payment-checkout-session", async (req, res) => {
       const paymentInfo = req.body;
-      const amount = parseInt(paymentInfo.cost) * 100;
+      console.log(paymentInfo);
+      const amount = parseInt(paymentInfo.TutorFee) * 100;
       const session = await stripe.checkout.sessions.create({
         line_items: [
           {
             price_data: {
-              currency: "usd",
+              currency: "bdt",
               unit_amount: amount,
               product_data: {
-                name: `Please pay for: ${paymentInfo.parcelName}`,
+                name: `Apply for Tutor: ${paymentInfo.TutorName}`,
               },
             },
             quantity: 1,
@@ -341,18 +344,21 @@ async function run() {
         ],
         mode: "payment",
         metadata: {
-          parcelId: paymentInfo.parcelId,
-          parcelName: paymentInfo.parcelName,
+          TutorName: paymentInfo.TutorName,
+          TutorFee: paymentInfo.TutorFee,
+          TutorId: paymentInfo.TutorId,
+          StudentName: paymentInfo.StudentName,
+          StudentEmail: paymentInfo.StudentEmail
         },
-        customer_email: paymentInfo.senderEmail,
-        success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
+        customer_email: paymentInfo.StudentEmail,
+        success_url: `${process.env.SITE_DOMAIN}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.SITE_DOMAIN}/payment-cancelled`,
       });
 
       res.send({ url: session.url });
     });
 
-    app.patch("/payment-success", async (req, res) => {
+    app.post("/payment-success", async (req, res) => {
       const sessionId = req.query.session_id;
 
       const session = await stripe.checkout.sessions.retrieve(sessionId);
@@ -368,27 +374,16 @@ async function run() {
           trackingId: PaymentExt.trackingId,
         });
       }
-
       const trackingId = generateTrackingId();
 
-      if (session.payment_status === "paid") {
-        const id = session.metadata.parcelId;
-        const query = { _id: new ObjectId(id) };
-        const update = {
-          $set: {
-            paymentStatus: "paid",
-            deliveryStatus: "pending-pickup",
-            trackingId: trackingId,
-          },
-        };
-        const result = await parcelsCollection.updateOne(query, update);
-
-        const payment = {
+          const payment = {
           amount: session.amount_total / 100,
           currency: session.currency,
-          customerEmail: session.customer_email,
-          parcelId: session.metadata.parcelId,
-          parcelName: session.metadata.parcelName,
+          customer_email: session.customer_email,
+          TutorName: session.metadata.TutorName,
+          TutorId: session.metadata.TutorId,
+          StudentEmail: session.metadata.StudentEmail,
+          StudentName: session.metadata.StudentName,
           transactionId: session.payment_intent,
           paymentStatus: session.payment_status,
           paidAt: new Date(),
@@ -397,7 +392,6 @@ async function run() {
 
         if (session.payment_status === "paid") {
           const resultPayment = await paymentCollection.insertOne(payment);
-
           res.send({
             success: true,
             modifyParcel: result,
@@ -406,13 +400,11 @@ async function run() {
             paymentInfo: resultPayment,
           });
         }
-      }
 
       res.send({ success: false });
     });
 
     // get payment info
-
     app.get("/payments", verifyJWT, async (req, res) => {
       const Email = req.query.email;
       const query = {};
@@ -432,11 +424,10 @@ async function run() {
 
     //  tutor api
     app.get("/tutor/data", verifyJWT, async (req, res) => {
-      const query = { role: 'tutor' };
+      const query = { role: "tutor" };
       const user = await userCollection.find(query).toArray();
       res.send(user);
     });
-
 
     app.get("/tutor/:id/tutorDetails", verifyJWT, async (req, res) => {
       const id = req.params.id;
@@ -460,7 +451,7 @@ async function run() {
       }
       const updateDoc = {
         $set: {
-          ...updateData, // ✅ spread operator
+          ...updateData,
           updatedAt: new Date(),
         },
       };
