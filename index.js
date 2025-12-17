@@ -97,6 +97,7 @@ async function run() {
     // Register user
     app.post("/Googleusers", async (req, res) => {
       const user = req.body;
+      console.log(user.Email);
       user.createdAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
       const Email = user.Email;
       const token = createToken(Email);
@@ -426,6 +427,44 @@ async function run() {
 
       const cursor = paymentCollection.find(query).sort({ paidAt: -1 });
       const result = await cursor.toArray();
+      res.send(result);
+    });
+
+    //  tutor api
+    app.get("/tutor/data", verifyJWT, async (req, res) => {
+      const query = { role: 'tutor' };
+      const user = await userCollection.find(query).toArray();
+      res.send(user);
+    });
+
+
+    app.get("/tutor/:id/tutorDetails", verifyJWT, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const user = await userCollection.findOne(query);
+      res.send(user);
+    });
+
+    app.patch("/tutor/:email/dataupdate", verifyJWT, async (req, res) => {
+      const paramEmail = req.params.email;
+      const tokenEmail = req.Email.Email;
+      const updateData = req.body;
+
+      if (paramEmail !== tokenEmail) {
+        return res.status(403).send({ message: "Forbidden access" });
+      }
+      const query = { Email: tokenEmail, role: "tutor" };
+      const user = await userCollection.findOne(query);
+      if (!user) {
+        return res.status(404).send({ message: "User not found" });
+      }
+      const updateDoc = {
+        $set: {
+          ...updateData, // ✅ spread operator
+          updatedAt: new Date(),
+        },
+      };
+      const result = await userCollection.updateOne(query, updateDoc);
       res.send(result);
     });
 
