@@ -406,13 +406,13 @@ async function run() {
 
     // get payment info
     app.get("/payments", verifyJWT, async (req, res) => {
+      console.log('tonmoy')
       const Email = req.query.email;
       const query = {};
 
       if (Email) {
-        query.customerEmail = Email;
-        // check email address
-        if (Email !== req.decoded_email) {
+        query.customer_email = Email;
+        if (Email !== req.Email.Email) {
           return res.status(403).send({ message: "forbidden access" });
         }
       }
@@ -422,8 +422,18 @@ async function run() {
       res.send(result);
     });
 
+
+app.get("/payments/all", async (req, res) => {
+  const result = await paymentCollection
+    .find({})
+    .sort({ paidAt: -1 })
+    .toArray();
+
+  res.send(result);
+});
+
     //  tutor api
-    app.get("/tutor/data", verifyJWT, async (req, res) => {
+    app.get("/tutor/data", async (req, res) => {
       const query = { role: "tutor" };
       const user = await userCollection.find(query).toArray();
       res.send(user);
