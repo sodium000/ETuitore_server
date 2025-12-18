@@ -406,10 +406,8 @@ async function run() {
 
     // get payment info
     app.get("/payments", verifyJWT, async (req, res) => {
-      console.log('tonmoy')
       const Email = req.query.email;
       const query = {};
-
       if (Email) {
         query.customer_email = Email;
         if (Email !== req.Email.Email) {
@@ -424,6 +422,7 @@ async function run() {
 
 
 app.get("/payments/all", async (req, res) => {
+  console.log('tonmoy')
   const result = await paymentCollection
     .find({})
     .sort({ paidAt: -1 })
