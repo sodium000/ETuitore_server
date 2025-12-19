@@ -99,7 +99,6 @@ async function run() {
     // Register user
     app.post("/Googleusers", async (req, res) => {
       const user = req.body;
-      console.log(user.Email);
       user.createdAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
       const Email = user.Email;
       const token = createToken(Email);
@@ -108,6 +107,7 @@ async function run() {
         secure: false, // true in production
         sameSite: "lax",
       });
+
       const userExists = await userCollection.findOne({ Email });
       if (userExists) {
         return res.send({ message: "user exists" });
@@ -118,7 +118,8 @@ async function run() {
 
     // Login user
     app.post("/login", async (req, res) => {
-      const { Email } = req.body;
+        const { Email } = req.body;
+            console.log(Email);
       const user = await userCollection.findOne({ Email });
       if (!user) {
         return res.status(401).send({ message: "User not found" });
@@ -126,7 +127,7 @@ async function run() {
       const token = createToken(Email);
       res.cookie("token", token, {
         httpOnly: true,
-        secure: false, // true in production
+        secure: false, 
         sameSite: "lax",
       });
       res.send({ message: "Login successful", user });
@@ -278,7 +279,6 @@ async function run() {
     app.patch("/post/:id/postdata", verifyJWT, async (req, res) => {
       const id = req.params.id;
       const updateStatus = req.body;
-      console.log(updateStatus);
       const query = { _id: new ObjectId(id) };
       const updatedDoc = {
         $set: { ...updateStatus },
@@ -312,7 +312,6 @@ async function run() {
     app.patch("/users/:id/role", verifyJWT, async (req, res) => {
       const id = req.params.id;
       const updateStatus = req.body;
-      console.log(updateStatus);
       const query = { _id: new ObjectId(id) };
       const updatedDoc = {
         $set: {
@@ -327,7 +326,6 @@ async function run() {
 
     app.post("/payment-checkout-session", async (req, res) => {
       const paymentInfo = req.body;
-      console.log(paymentInfo);
       const amount = parseInt(paymentInfo.TutorFee) * 100;
       const session = await stripe.checkout.sessions.create({
         line_items: [
@@ -348,7 +346,7 @@ async function run() {
           TutorFee: paymentInfo.TutorFee,
           TutorId: paymentInfo.TutorId,
           StudentName: paymentInfo.StudentName,
-          StudentEmail: paymentInfo.StudentEmail
+          StudentEmail: paymentInfo.StudentEmail,
         },
         customer_email: paymentInfo.StudentEmail,
         success_url: `${process.env.SITE_DOMAIN}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
@@ -376,30 +374,30 @@ async function run() {
       }
       const trackingId = generateTrackingId();
 
-          const payment = {
-          amount: session.amount_total / 100,
-          currency: session.currency,
-          customer_email: session.customer_email,
-          TutorName: session.metadata.TutorName,
-          TutorId: session.metadata.TutorId,
-          StudentEmail: session.metadata.StudentEmail,
-          StudentName: session.metadata.StudentName,
-          transactionId: session.payment_intent,
-          paymentStatus: session.payment_status,
-          paidAt: new Date(),
-          trackingId: trackingId,
-        };
+      const payment = {
+        amount: session.amount_total / 100,
+        currency: session.currency,
+        customer_email: session.customer_email,
+        TutorName: session.metadata.TutorName,
+        TutorId: session.metadata.TutorId,
+        StudentEmail: session.metadata.StudentEmail,
+        StudentName: session.metadata.StudentName,
+        transactionId: session.payment_intent,
+        paymentStatus: session.payment_status,
+        paidAt: new Date(),
+        trackingId: trackingId,
+      };
 
-        if (session.payment_status === "paid") {
-          const resultPayment = await paymentCollection.insertOne(payment);
-          res.send({
-            success: true,
-            modifyParcel: result,
-            trackingId: trackingId,
-            transactionId: session.payment_intent,
-            paymentInfo: resultPayment,
-          });
-        }
+      if (session.payment_status === "paid") {
+        const resultPayment = await paymentCollection.insertOne(payment);
+        res.send({
+          success: true,
+          modifyParcel: result,
+          trackingId: trackingId,
+          transactionId: session.payment_intent,
+          paymentInfo: resultPayment,
+        });
+      }
 
       res.send({ success: false });
     });
@@ -420,16 +418,14 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/payments/all", async (req, res) => {
+      const result = await paymentCollection
+        .find({})
+        .sort({ paidAt: -1 })
+        .toArray();
 
-app.get("/payments/all", async (req, res) => {
-  console.log('tonmoy')
-  const result = await paymentCollection
-    .find({})
-    .sort({ paidAt: -1 })
-    .toArray();
-
-  res.send(result);
-});
+      res.send(result);
+    });
 
     //  tutor api
     app.get("/tutor/data", async (req, res) => {
@@ -438,9 +434,19 @@ app.get("/payments/all", async (req, res) => {
       res.send(user);
     });
 
-    app.get("/tutor/:id/tutorDetails", verifyJWT, async (req, res) => {
+    app.get("/tutor/:id/tutorDetails", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
+      const user = await userCollection.findOne(query);
+      res.send(user);
+    });
+
+    app.get("/tutor/:email/data", async (req, res) => {
+      const email = req.params.email;
+      const query = {
+        Email : email,
+        role : 'tutor'
+      };
       const user = await userCollection.findOne(query);
       res.send(user);
     });
