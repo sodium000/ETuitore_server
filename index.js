@@ -24,7 +24,7 @@ const createToken = (Email) => {
   return jwt.sign({ Email }, process.env.JWT_SECRET, { expiresIn: "7d" });
 };
 
-const verifyJWT = (req, res, next) => {
+const verifyJWT= (req, res, next) => {
   const token = req.cookies.token;
 
   if (!token) {
@@ -139,9 +139,8 @@ async function run() {
     });
 
     // update
-    app.patch("/update", verifyJWT, async (req, res) => {
+    app.patch("/update",  async (req, res) => {
       const { Email, displayName, photoURL, Phone } = req.body;
-      console.log(req.body);
       const user = await userCollection.findOne({ Email });
       if (!user) {
         return res.status(401).send({ message: "User not found" });
@@ -167,7 +166,7 @@ async function run() {
     });
 
     // Tution Post
-    app.post("/post", verifyJWT, async (req, res) => {
+    app.post("/post",  async (req, res) => {
       const post = req.body;
       post.createdAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
       post.postedBy = req.Email.Email;
@@ -176,11 +175,9 @@ async function run() {
       res.send(result);
     });
 
-    app.post("/applications", verifyJWT, async (req, res) => {
+    app.post("/applications",  async (req, res) => {
       const applications = req.body;
-      const ApplyBy = req.Email.Email;
       const tutorEmail = req.body.tutorEmail;
-      if (ApplyBy === tutorEmail) {
         const postId = req.body.postId;
         const query = {
           postId,
@@ -190,17 +187,15 @@ async function run() {
         if (sameapply) {
           return res.send({ message: "Already apply" });
         }
-      }
+
       const result = await ApplyCollection.insertOne(applications);
       return res.send(result);
     });
 
-    app.post("/applications/tutor", verifyJWT, async (req, res) => {
+    app.post("/applications/tutor",  async (req, res) => {
       const applications = req.body;
       const StudentEmail = req.body.StudentEmail;
       const TutorEmail = req.body.TutorEmail;
-      const ApplyBy = req.Email.Email;
-      if (StudentEmail === ApplyBy) {
         const postId = req.body.postId;
         const query = {
           TutorEmail,
@@ -210,37 +205,31 @@ async function run() {
         if (sameapply) {
           return res.send({ message: "Already apply" });
         }
-      }
-      if (StudentEmail !== ApplyBy) {
-        return res.sendStatus(401);
-      }
       const result = await ApplyCollection.insertOne(applications);
       return res.send(result);
     });
 
-    app.get("/applications/:email/apply", verifyJWT, async (req, res) => {
+    app.get("/applications/:email/apply",  async (req, res) => {
       const email = req.params.email;
-      const ApplyBy = req.Email.Email;
-      if (ApplyBy === email) {
+      
         const query = {
           TutorEmail: email,
           status: { $in: ["Pending", "Accepted", "Rejected"] },
         };
         const result = await ApplyCollection.find(query).toArray();
         return res.send(result);
-      }
+      
     });
 
-    app.get("/applications/:email/student", verifyJWT, async (req, res) => {
+    app.get("/applications/:email/student",  async (req, res) => {
       const email = req.params.email;
-      ApplyBy = req.Email.Email;
-      if (ApplyBy === email) {
+      
         const query = {
           email,
         };
         const result = await ApplyCollection.find(query).toArray();
         return res.send(result);
-      }
+  
     });
 
     app.delete("/applications/:id/deleted", async (req, res) => {
@@ -299,7 +288,7 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/post/:id/update", verifyJWT, async (req, res) => {
+    app.patch("/post/:id/update",  async (req, res) => {
       const id = req.params.id;
       const updateStatus = req.body.status;
       const query = { _id: new ObjectId(id) };
@@ -327,7 +316,7 @@ async function run() {
 
     // patch post data
 
-    app.patch("/post/:id/postdata", verifyJWT, async (req, res) => {
+    app.patch("/post/:id/postdata",  async (req, res) => {
       const id = req.params.id;
       const updateStatus = req.body;
       const query = { _id: new ObjectId(id) };
@@ -339,7 +328,7 @@ async function run() {
     });
 
     // deleted
-    app.delete("/post/:id/deleted", verifyJWT, async (req, res) => {
+    app.delete("/post/:id/deleted",  async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await postCollection.deleteOne(query);
@@ -360,7 +349,7 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/users/:id/role", verifyJWT, async (req, res) => {
+    app.patch("/users/:id/role",  async (req, res) => {
       const id = req.params.id;
       const updateStatus = req.body;
       const query = { _id: new ObjectId(id) };
@@ -453,14 +442,11 @@ async function run() {
     });
 
     // get payment info
-    app.get("/payments", verifyJWT, async (req, res) => {
+    app.get("/payments", async (req, res) => {
       const Email = req.query.email;
       const query = {};
       if (Email) {
         query.customer_email = Email;
-        if (Email !== req.Email.Email) {
-          return res.status(403).send({ message: "forbidden access" });
-        }
       }
 
       const cursor = paymentCollection.find(query).sort({ paidAt: -1 });
@@ -501,14 +487,8 @@ async function run() {
       res.send(user);
     });
 
-    app.patch("/tutor/:email/dataupdate", verifyJWT, async (req, res) => {
-      const paramEmail = req.params.email;
-      const tokenEmail = req.Email.Email;
+    app.patch("/tutor/:email/dataupdate",  async (req, res) => {
       const updateData = req.body;
-
-      if (paramEmail !== tokenEmail) {
-        return res.status(403).send({ message: "Forbidden access" });
-      }
       const query = { Email: tokenEmail, role: "tutor" };
       const user = await userCollection.findOne(query);
       if (!user) {
@@ -525,7 +505,7 @@ async function run() {
     });
 
     // tutor payment show
-    app.get("/tuitions/:email/ongoing", verifyJWT, async (req, res) => {
+    app.get("/tuitions/:email/ongoing",  async (req, res) => {
       try {
         const email = req.params.email;
         const query = {
