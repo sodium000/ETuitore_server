@@ -118,8 +118,7 @@ async function run() {
 
     // Login user
     app.post("/login", async (req, res) => {
-        const { Email } = req.body;
-            console.log(Email);
+      const { Email } = req.body;
       const user = await userCollection.findOne({ Email });
       if (!user) {
         return res.status(401).send({ message: "User not found" });
@@ -127,10 +126,38 @@ async function run() {
       const token = createToken(Email);
       res.cookie("token", token, {
         httpOnly: true,
-        secure: false, 
+        secure: false,
         sameSite: "lax",
       });
       res.send({ message: "Login successful", user });
+    });
+
+    // Logout user
+    app.post("/logout", (req, res) => {
+      res.clearCookie("token");
+      res.send({ message: "Logout successful" });
+    });
+
+    // update
+    app.patch("/update", verifyJWT, async (req, res) => {
+      const { Email, displayName, photoURL, Phone } = req.body;
+      console.log(req.body);
+      const user = await userCollection.findOne({ Email });
+      if (!user) {
+        return res.status(401).send({ message: "User not found" });
+      }
+
+      const filter = { Email };
+      const updateDocument = {
+        $set: {
+          displayName: displayName,
+          photoURL: photoURL,
+          Phone: Phone,
+        },
+      };
+      const result = await userCollection.updateOne(filter, updateDocument);
+
+      res.send(result);
     });
 
     // Logout user
@@ -151,8 +178,8 @@ async function run() {
 
     app.post("/applications", verifyJWT, async (req, res) => {
       const applications = req.body;
-      ApplyBy = req.Email.Email;
-      tutorEmail = req.body.tutorEmail;
+      const ApplyBy = req.Email.Email;
+      const tutorEmail = req.body.tutorEmail;
       if (ApplyBy === tutorEmail) {
         const postId = req.body.postId;
         const query = {
@@ -168,12 +195,36 @@ async function run() {
       return res.send(result);
     });
 
+    app.post("/applications/tutor", verifyJWT, async (req, res) => {
+      const applications = req.body;
+      const StudentEmail = req.body.StudentEmail;
+      const TutorEmail = req.body.TutorEmail;
+      const ApplyBy = req.Email.Email;
+      if (StudentEmail === ApplyBy) {
+        const postId = req.body.postId;
+        const query = {
+          TutorEmail,
+          StudentEmail,
+        };
+        const sameapply = await ApplyCollection.findOne(query);
+        if (sameapply) {
+          return res.send({ message: "Already apply" });
+        }
+      }
+      if (StudentEmail !== ApplyBy) {
+        return res.sendStatus(401);
+      }
+      const result = await ApplyCollection.insertOne(applications);
+      return res.send(result);
+    });
+
     app.get("/applications/:email/apply", verifyJWT, async (req, res) => {
       const email = req.params.email;
-      ApplyBy = req.Email.Email;
+      const ApplyBy = req.Email.Email;
       if (ApplyBy === email) {
         const query = {
-          tutorEmail: email,
+          TutorEmail: email,
+          status: { $in: ["Pending", "Accepted", "Rejected"] },
         };
         const result = await ApplyCollection.find(query).toArray();
         return res.send(result);
@@ -323,7 +374,6 @@ async function run() {
     });
 
     // payment api
-
     app.post("/payment-checkout-session", async (req, res) => {
       const paymentInfo = req.body;
       const amount = parseInt(paymentInfo.TutorFee) * 100;
@@ -344,7 +394,8 @@ async function run() {
         metadata: {
           TutorName: paymentInfo.TutorName,
           TutorFee: paymentInfo.TutorFee,
-          TutorId: paymentInfo.TutorId,
+          PostORTutorId: paymentInfo.PostORTutorId,
+          TutorEmail: paymentInfo.TutorEmail,
           StudentName: paymentInfo.StudentName,
           StudentEmail: paymentInfo.StudentEmail,
         },
@@ -361,14 +412,13 @@ async function run() {
 
       const session = await stripe.checkout.sessions.retrieve(sessionId);
 
-      const transactionId = session.payment_intent;
-      const query = { transactionId: transactionId };
+      const TutorEmail = session.metadata.TutorEmail;
+      const query = { TutorEmail: TutorEmail };
       const PaymentExt = await paymentCollection.findOne(query);
 
       if (PaymentExt) {
         return res.send({
           message: "already exists",
-          transactionId,
           trackingId: PaymentExt.trackingId,
         });
       }
@@ -379,7 +429,8 @@ async function run() {
         currency: session.currency,
         customer_email: session.customer_email,
         TutorName: session.metadata.TutorName,
-        TutorId: session.metadata.TutorId,
+        TutorEmail: session.metadata.TutorEmail,
+        PostORTutorId: session.metadata.PostORTutorId,
         StudentEmail: session.metadata.StudentEmail,
         StudentName: session.metadata.StudentName,
         transactionId: session.payment_intent,
@@ -390,16 +441,15 @@ async function run() {
 
       if (session.payment_status === "paid") {
         const resultPayment = await paymentCollection.insertOne(payment);
-        res.send({
+        return res.send({
           success: true,
-          modifyParcel: result,
           trackingId: trackingId,
           transactionId: session.payment_intent,
           paymentInfo: resultPayment,
         });
       }
 
-      res.send({ success: false });
+      return res.send({ success: false });
     });
 
     // get payment info
@@ -444,8 +494,8 @@ async function run() {
     app.get("/tutor/:email/data", async (req, res) => {
       const email = req.params.email;
       const query = {
-        Email : email,
-        role : 'tutor'
+        Email: email,
+        role: "tutor",
       };
       const user = await userCollection.findOne(query);
       res.send(user);
@@ -472,6 +522,22 @@ async function run() {
       };
       const result = await userCollection.updateOne(query, updateDoc);
       res.send(result);
+    });
+
+    // tutor payment show
+    app.get("/tuitions/:email/ongoing", verifyJWT, async (req, res) => {
+      try {
+        const email = req.params.email;
+        const query = {
+          TutorEmail: email,
+          paymentStatus: "paid",
+        };
+
+        const result = await paymentCollection.find(query).toArray();
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Error fetching data" });
+      }
     });
 
     await client.db("admin").command({ ping: 1 });
