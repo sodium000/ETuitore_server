@@ -15,7 +15,7 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: ["http://localhost:5174", "https://your-client.vercel.app"],
     credentials: true,
   })
 );
@@ -90,7 +90,7 @@ async function run() {
       const token = createToken(Email);
       res.cookie("token", token, {
         httpOnly: true,
-        secure: false,
+        secure: true,
         sameSite: "lax",
       });
       res.send(result);
@@ -104,7 +104,7 @@ async function run() {
       const token = createToken(Email);
       res.cookie("token", token, {
         httpOnly: true,
-        secure: false, // true in production
+        secure: true, // true in production
         sameSite: "lax",
       });
 
@@ -126,7 +126,7 @@ async function run() {
       const token = createToken(Email);
       res.cookie("token", token, {
         httpOnly: true,
-        secure: false,
+        secure: true,
         sameSite: "lax",
       });
       res.send({ message: "Login successful", user });
