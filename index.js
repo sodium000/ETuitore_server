@@ -12,31 +12,14 @@ const stripe = require("stripe")(process.env.STEIPE_SECRET);
 
 // middleware added
 app.use(express.json());
-app.use(cookieParser());
 app.use(
   cors({
-    origin: ["http://localhost:5174", "https://your-client.vercel.app"],
-    credentials: true,
+    origin: ["http://localhost:5173"],
   })
 );
 
-const createToken = (Email) => {
-  return jwt.sign({ Email }, process.env.JWT_SECRET, { expiresIn: "7d" });
-};
 
-const verifyJWT= (req, res, next) => {
-  const token = req.cookies.token;
 
-  if (!token) {
-    return res.sendStatus(401);
-  }
-
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if (err) return res.sendStatus(403);
-    req.Email = decoded;
-    next();
-  });
-};
 
 // crypto genaretot
 function generateTrackingId() {
@@ -66,7 +49,6 @@ async function run() {
     const paymentCollection = DB.collection("paymentCollection");
 
     const verifyAdmin = async (req, res, next) => {
-      const email = req.Email.Email;
       const query = { email };
       const user = await userCollection.findOne(query);
 
@@ -76,6 +58,13 @@ async function run() {
 
       next();
     };
+
+        //  tutor api
+    app.get("/tutor/data", async (req, res) => {
+      const query = { role: "tutor" };
+      const user = await userCollection.find(query).toArray();
+      res.send(user);
+    });
 
     // Register user
     app.post("/users", async (req, res) => {
@@ -87,12 +76,7 @@ async function run() {
         return res.send({ message: "user exists" });
       }
       const result = await userCollection.insertOne(user);
-      const token = createToken(Email);
-      res.cookie("token", token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "lax",
-      });
+
       res.send(result);
     });
 
@@ -101,13 +85,6 @@ async function run() {
       const user = req.body;
       user.createdAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
       const Email = user.Email;
-      const token = createToken(Email);
-      res.cookie("token", token, {
-        httpOnly: true,
-        secure: true, // true in production
-        sameSite: "lax",
-      });
-
       const userExists = await userCollection.findOne({ Email });
       if (userExists) {
         return res.send({ message: "user exists" });
@@ -123,18 +100,11 @@ async function run() {
       if (!user) {
         return res.status(401).send({ message: "User not found" });
       }
-      const token = createToken(Email);
-      res.cookie("token", token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "lax",
-      });
       res.send({ message: "Login successful", user });
     });
 
     // Logout user
     app.post("/logout", (req, res) => {
-      res.clearCookie("token");
       res.send({ message: "Logout successful" });
     });
 
@@ -166,10 +136,10 @@ async function run() {
     });
 
     // Tution Post
-    app.post("/post",  async (req, res) => {
+    app.post("/post/:email/post",  async (req, res) => {
       const post = req.body;
       post.createdAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
-      post.postedBy = req.Email.Email;
+      post.postedBy = email;
       post.status = "panding";
       const result = await postCollection.insertOne(post);
       res.send(result);
@@ -463,12 +433,7 @@ async function run() {
       res.send(result);
     });
 
-    //  tutor api
-    app.get("/tutor/data", async (req, res) => {
-      const query = { role: "tutor" };
-      const user = await userCollection.find(query).toArray();
-      res.send(user);
-    });
+
 
     app.get("/tutor/:id/tutorDetails", async (req, res) => {
       const id = req.params.id;
